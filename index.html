@@ -1688,6 +1688,7 @@ function toast(msg, ms = 2000) {
   const KEY = 'terminal-audio-v1';
   let audio = null;
   let unlockAttached = false;
+  let hasAttemptedAutoplay = false;
 
   function getAudio() {
     if (!audio) {
@@ -1715,32 +1716,68 @@ function toast(msg, ms = 2000) {
     b.classList.toggle('muted', !playing);
     b.textContent = playing ? '♫' : '♪';
   }
+
+  // 播放核心：自动播放尝试，失败则安排解锁
   function play() {
     const a = getAudio();
     if (!a.src) return;
     const p = a.play();
-    if (p && p.then) p.then(() => { updateBtn(true); setEnabled(true); }).catch(() => updateBtn(true));
-    else { updateBtn(true); }
+    if (p && p.then) {
+      p.then(() => {
+        updateBtn(true);
+        setEnabled(true);
+        // 播放成功，移除解锁监听
+        removeUnlockListeners();
+      }).catch((e) => {
+        // 自动播放被拦截，保留静音状态，并绑定解锁
+        updateBtn(false);
+        if (enabled()) attachUnlock();
+      });
+    } else {
+      // 老旧浏览器
+      updateBtn(true);
+      setEnabled(true);
+      removeUnlockListeners();
+    }
   }
+
   function pause() {
     const a = getAudio();
     if (a) a.pause();
     updateBtn(false);
   }
+
+  // 解锁监听：单击或滑动（touchmove）立即开启音乐
+  function unlockHandler(e) {
+    if (!enabled()) return;
+    const a = getAudio();
+    if (a.paused) {
+      play();          // 再次尝试，此时用户手势已满足
+    }
+    // 解绑所有监听，避免重复
+    removeUnlockListeners();
+  }
+
   function attachUnlock() {
     if (unlockAttached) return;
     unlockAttached = true;
-    const tryUnlock = () => {
-      if (enabled() && getAudio().paused) play();
-      document.removeEventListener('click', tryUnlock);
-      document.removeEventListener('touchstart', tryUnlock);
-      document.removeEventListener('scroll', tryUnlock);
-      unlockAttached = false;
-    };
-    document.addEventListener('click', tryUnlock);
-    document.addEventListener('touchstart', tryUnlock);
-    document.addEventListener('scroll', tryUnlock, { passive: true });
+    document.addEventListener('click', unlockHandler, { once: true });
+    document.addEventListener('touchstart', unlockHandler, { once: true });
+    document.addEventListener('touchmove', unlockHandler, { once: true, passive: true });
+    document.addEventListener('scroll', unlockHandler, { once: true, passive: true });
+    // 额外用pointerdown覆盖部分手势
+    document.addEventListener('pointerdown', unlockHandler, { once: true });
   }
+
+  function removeUnlockListeners() {
+    document.removeEventListener('click', unlockHandler);
+    document.removeEventListener('touchstart', unlockHandler);
+    document.removeEventListener('touchmove', unlockHandler);
+    document.removeEventListener('scroll', unlockHandler);
+    document.removeEventListener('pointerdown', unlockHandler);
+    unlockAttached = false;
+  }
+
   function init() {
     const a = getAudio();
     a.loop = true;
@@ -1751,17 +1788,42 @@ function toast(msg, ms = 2000) {
     const src = list[Math.floor(Math.random() * list.length)];
     a.src = src;
     a.load();
-    updateBtn(enabled());
-    if (enabled()) { play(); attachUnlock(); }
+
+    // 设置音频开关按钮的图标状态（初始根据enabled，但实际播放状态由play结果决定）
+    updateBtn(false);   // 先显示静音图标，播放成功后会变成♫
+
+    // 如果用户之前手动关闭过音乐，则不自动播放
+    if (enabled()) {
+      // 立刻尝试播放
+      hasAttemptedAutoplay = true;
+      play();  // play内部会处理失败并自动attachUnlock
+    } else {
+      // 手动关闭状态：不自动播放，但按钮显示静音，点击可开启
+      updateBtn(false);
+    }
+
+    // 按钮点击切换
     const btn = document.querySelector('.audio-toggle');
     if (btn) {
-      btn.onclick = () => {
-        if (enabled()) { pause(); setEnabled(false); }
-        else { setEnabled(true); play(); }
+      btn.onclick = (e) => {
+        e.stopPropagation(); // 避免触发全局解锁（但已用once，无碍）
+        if (a.paused) {
+          setEnabled(true);
+          play();
+        } else {
+          pause();
+          setEnabled(false);
+        }
       };
     }
   }
-  setTimeout(init, 600);
+
+  // 确保在DOM准备好后初始化，稍延迟加载音频资源
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => setTimeout(init, 100));
+  } else {
+    setTimeout(init, 100);
+  }
 })();
 </script>
 </body>
