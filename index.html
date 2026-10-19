@@ -1925,16 +1925,20 @@ function toast(msg, ms = 2000) {
 
 /* ============================================================
    音频模块
+   ★ MAX 首随机选一首，固定不轮换
+   ★ 先静音自动播放 → 失败再非静音 → 仍失败挂多事件解锁
    ============================================================ */
 (function() {
   const AUDIO_KEY = 'snow-audio-state-v1';
   const MAX = 3;
   const EXT = '.mp3';
-  const CDN_PREFIX = 'https://jsd.onmicrosoft.cn/gh/qingfengqaq/yinmian-own-b@main/';
+
+
+  const AUDIO_BASE = 'https://cdn.jsdmirror.com/gh/qingfengqaq/yinmian-own-b@main/';
 
   // 进入时随机选一首，固定不轮换
   const srcIndex = Math.floor(Math.random() * MAX);
-  const AUDIO_SRC = CDN_PREFIX + (srcIndex + 1) + EXT;
+  const AUDIO_SRC = AUDIO_BASE + (srcIndex + 1) + EXT;
 
   let audio = null;
   let unlockBound = false;
