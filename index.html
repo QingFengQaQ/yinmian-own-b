@@ -8,16 +8,17 @@
 
 <style>
 /* ============================================================
+       ^_^ 清风做的屎山代码 ^_^ 
+       ^_^ 不会真的有人连屎山都要抄吧? ^_^
+       ^_^ 如果你抄了，那屎山代码的署名也不能改，因为是我的进步史 ^_^
+  ============================================================ */
+/* ============================================================
    Fonts
-   
-    ^_^ 清风做的屎山代码 ^_^
-    ^_^ 不会真的有人连屎山都要抄吧? ^_^ 
-    ^_^ 如果你抄了，那屎山代码的署名也不能改，因为是我的进步史 ^_^
    ============================================================ */
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=JetBrains+Mono:wght@300;400;500&family=Noto+Serif+SC:wght@300;400;600&display=swap');
 
 /* ============================================================
-   Reset & Variables —— Error主题
+   ERROR主题
    ============================================================ */
 :root{
   --void: #050505;
@@ -84,12 +85,10 @@ body{
   user-select: none;
   -webkit-touch-callout: none;
 }
-/* 允许文字内容区域仍可选中 */
 .file-body-inner, .log-desc, .outro-quote, .boot-line, .display-desc{
   -webkit-user-select: text;
   user-select: text;
 }
-/* 移除按钮/链接的默认聚焦轮廓 */
 button:focus, a:focus, [role="button"]:focus{
   outline: none;
   box-shadow: none;
@@ -850,7 +849,7 @@ section.block{position:relative;padding:72px 0 56px}
 .ok-wrap .confirm-reset{opacity:1;pointer-events:auto}
 
 /* ============================================================
-   04 更多（话术/板评/冠名）
+   04 更多
    ============================================================ */
 .portal-grid{
   display:grid;
@@ -1034,7 +1033,7 @@ section.block{position:relative;padding:72px 0 56px}
 <!-- 音乐开关 -->
 <button class="audio-toggle muted" type="button" aria-label="音频开关">♪</button>
 
-<!-- 顶部栏 & 菜单（最后 3 项合并为“更多”） -->
+<!-- 顶部栏 & 菜单 -->
 <header class="fixed-header" id="header">
   <div class="logo">L隐眠<small>Game Loading...</small></div>
   <button class="menu-btn" id="menuBtn" aria-label="菜单">
@@ -1311,7 +1310,7 @@ section.block{position:relative;padding:72px 0 56px}
   </div>
 </section>
 
-<!-- 04 更多（话术 / 板评 / 冠名 合并入口） -->
+<!-- 04 更多 -->
 <section class="block" id="more">
   <div class="term-head" data-reveal>
     <span class="num">[04]</span>
@@ -1359,6 +1358,60 @@ section.block{position:relative;padding:72px 0 56px}
 </main>
 
 <script>
+/* ============================================================
+   会话与持久化核心（参照文件 2）
+   —— 新会话清空所有状态；同会话内刷新保留状态；跳转返回不重置
+   ============================================================ */
+const SESSION_KEY = 'error-session-alive';
+
+const STATE_KEYS = {
+  intro: 'error-intro-played',
+  mbti: 'error-mbti-idx',
+  style: 'error-style-idx',
+  confirmed: 'error-confirmed',
+  more: 'error-more-open'
+};
+
+(function initSession(){
+  let isNewSession = false;
+  try {
+    isNewSession = sessionStorage.getItem(SESSION_KEY) !== '1';
+    sessionStorage.setItem(SESSION_KEY, '1');
+  } catch (e) { isNewSession = false; }
+
+  if (isNewSession) {
+    try {
+      Object.values(STATE_KEYS).forEach(k => localStorage.removeItem(k));
+      sessionStorage.removeItem('error-intro-played');
+    } catch (e) {}
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      try { sessionStorage.setItem(SESSION_KEY, '1'); } catch (e) {}
+    }
+  });
+})();
+
+function readState(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v;
+  } catch (e) { return fallback; }
+}
+function writeState(key, value) {
+  try { localStorage.setItem(key, String(value)); } catch (e) {}
+}
+function removeState(key) {
+  try { localStorage.removeItem(key); } catch (e) {}
+}
+function hasIntroPlayed() {
+  return readState(STATE_KEYS.intro, '0') === '1';
+}
+function markIntroPlayed() {
+  writeState(STATE_KEYS.intro, '1');
+}
+
 /* ============================================================
    基础工具
    ============================================================ */
@@ -1413,10 +1466,22 @@ function toast(msg, ms = 2000) {
 }
 
 /* ============================================================
-   启动动画
+   启动动画（同会话内刷新跳过，返回不重置）
    ============================================================ */
 (function() {
   const bootLines = $('#bootLines');
+  const audioBtn = $('.audio-toggle');
+
+  if (hasIntroPlayed()) {
+    $('#bootTitle').classList.add('show');
+    $('#bootStatus').classList.add('show');
+    $('#bootScroll').classList.add('show');
+    $('#header').classList.add('show');
+    if (audioBtn) audioBtn.classList.add('show');
+    document.body.classList.remove('lock');
+    return;
+  }
+
   const bootLinesData = [
     { html: '<span class="arrow">▸</span><span class="cmd">$ initialize --user=logos</span>' },
     { html: '<span class="arrow">▸</span><span class="cmd">> loading profile...</span>' },
@@ -1443,8 +1508,9 @@ function toast(msg, ms = 2000) {
     setTimeout(() => $('#bootScroll').classList.add('show'), 750);
     setTimeout(() => {
       $('#header').classList.add('show');
-      $('.audio-toggle').classList.add('show');
+      if (audioBtn) audioBtn.classList.add('show');
       document.body.classList.remove('lock');
+      markIntroPlayed();
     }, 850);
   })();
 })();
@@ -1520,23 +1586,40 @@ function toast(msg, ms = 2000) {
 })();
 
 /* ============================================================
-   MBTI
+   MBTI（状态持久化）
    ============================================================ */
 (function() {
   const note = $('#mbtiNoteInline');
   const bar = $('#mbtiInline');
   if (!bar) return;
-  $$('#mbtiInline button').forEach(b => {
+  const buttons = $$('#mbtiInline button');
+
+  const saved = parseInt(readState(STATE_KEYS.mbti, '-1'), 10);
+  if (saved >= 0 && saved < buttons.length) {
+    const b = buttons[saved];
+    b.classList.add('on');
+    if (note) note.textContent = b.dataset.m;
+  }
+
+  buttons.forEach((b, i) => {
     b.addEventListener('click', () => {
-      $$('#mbtiInline button').forEach(x => x.classList.toggle('on', x === b));
-      scramble(note, b.dataset.m, 450);
+      const isSame = b.classList.contains('on');
+      buttons.forEach(x => x.classList.remove('on'));
+      if (isSame) {
+        writeState(STATE_KEYS.mbti, -1);
+        if (note) note.textContent = '点击字母查看释义';
+      } else {
+        b.classList.add('on');
+        scramble(note, b.dataset.m, 450);
+        writeState(STATE_KEYS.mbti, i);
+      }
       buzz(5);
     });
   });
 })();
 
 /* ============================================================
-   风格选择器
+   风格选择器（状态持久化）
    ============================================================ */
 (function() {
   const STYLES = [
@@ -1570,15 +1653,28 @@ function toast(msg, ms = 2000) {
     tabsEl.appendChild(btn);
   });
 
-  async function pick(i) {
-    if (busy) return;
-    if (i === cur) return;
+  async function pick(i, instant = false) {
+    if (busy || i === cur) return;
     busy = true;
     cur = i;
     $$('#styleTabs .style-tab').forEach((t, k) => t.classList.toggle('on', k === i));
     labelEl.textContent = `MODE · ${String(i + 1).padStart(2, '0')} / ${String(STYLES.length).padStart(2, '0')}`;
     descEl.textContent = '';
     tagsEl.innerHTML = '';
+    writeState(STATE_KEYS.style, i);
+
+    if (instant) {
+      nameEl.textContent = STYLES[i].name;
+      descEl.textContent = STYLES[i].desc;
+      STYLES[i].tags.forEach(tag => {
+        const span = document.createElement('span');
+        span.textContent = tag;
+        tagsEl.appendChild(span);
+      });
+      busy = false;
+      return;
+    }
+
     await scramble(nameEl, STYLES[i].name, 600);
     const desc = STYLES[i].desc;
     let dk = 0;
@@ -1622,12 +1718,17 @@ function toast(msg, ms = 2000) {
     else startAuto();
   });
 
-  new IntersectionObserver(([e], o) => {
-    if (e.isIntersecting) {
-      o.disconnect();
-      pick(Math.floor(Math.random() * STYLES.length));
-    }
-  }, { threshold: .3 }).observe($('#style'));
+  const savedStyle = parseInt(readState(STATE_KEYS.style, '-1'), 10);
+  if (savedStyle >= 0 && savedStyle < STYLES.length) {
+    pick(savedStyle, true);
+  } else {
+    new IntersectionObserver(([e], o) => {
+      if (e.isIntersecting) {
+        o.disconnect();
+        pick(Math.floor(Math.random() * STYLES.length));
+      }
+    }, { threshold: .3 }).observe($('#style'));
+  }
 
   document.addEventListener('click', e => {
     if (!e.target.closest('.style-selector')) stopAuto();
@@ -1635,7 +1736,7 @@ function toast(msg, ms = 2000) {
 })();
 
 /* ============================================================
-   长按确认
+   长按确认（状态持久化）
    ============================================================ */
 (function() {
   const btn = $('#holdBtn');
@@ -1645,12 +1746,17 @@ function toast(msg, ms = 2000) {
   if (!btn) return;
   const L = 440;
   let hp = 0, holding = false, raf;
+
+  const isConfirmed = () => readState(STATE_KEYS.confirmed, '0') === '1';
+
   const done = () => {
     btn.classList.add('ok');
     panel.classList.add('ok-wrap');
     circle.style.strokeDashoffset = 0;
   };
-  if (localStorage.getItem('logos-confirmed')) done();
+
+  if (isConfirmed()) done();
+
   function step() {
     hp = clamp(hp + (holding ? .02 : -.05), 0, 1);
     circle.style.strokeDashoffset = L * (1 - hp);
@@ -1659,7 +1765,7 @@ function toast(msg, ms = 2000) {
       holding = false;
       done();
       btn.classList.remove('holding');
-      localStorage.setItem('logos-confirmed', 1);
+      writeState(STATE_KEYS.confirmed, '1');
       toast('CONFIRMED · 已阅');
       buzz(70);
       document.body.classList.add('shake');
@@ -1688,7 +1794,7 @@ function toast(msg, ms = 2000) {
     panel.classList.remove('ok-wrap');
     hp = 0;
     circle.style.strokeDashoffset = L;
-    localStorage.removeItem('logos-confirmed');
+    removeState(STATE_KEYS.confirmed);
   });
   const style = document.createElement('style');
   style.textContent = `@keyframes shake{20%{transform:translate(-3px,2px)}40%{transform:translate(3px,-2px)}60%{transform:translate(-2px,1px)}80%{transform:translate(2px,0)}}.shake{animation:shake .4s}`;
@@ -1696,7 +1802,106 @@ function toast(msg, ms = 2000) {
 })();
 
 /* ============================================================
-   入口卡片
+   滚动限制（参照文件 2）：确认前可上滑，不可下滑进入「更多」
+   ============================================================ */
+(function(){
+  const noticeSection = document.getElementById('notice');
+  const moreSection = document.getElementById('more');
+  const holdBtn = document.getElementById('holdBtn');
+  if (!noticeSection || !moreSection || !holdBtn) return;
+
+  function isConfirmed() {
+    return readState(STATE_KEYS.confirmed, '0') === '1';
+  }
+
+  function getMaxScrollY() {
+    const noticeRect = noticeSection.getBoundingClientRect();
+    const noticeBottomDoc = noticeRect.bottom + window.scrollY;
+    const vh = window.innerHeight;
+    return Math.max(0, noticeBottomDoc - vh + 20);
+  }
+
+  function enforceScrollBoundary() {
+    if (isConfirmed()) return;
+    const maxScrollY = getMaxScrollY();
+    if (window.scrollY > maxScrollY) {
+      window.scrollTo({ top: maxScrollY, behavior: 'smooth' });
+    }
+  }
+
+  let ticking = false;
+  window.addEventListener('scroll', () => {
+    if (isConfirmed()) return;
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      enforceScrollBoundary();
+      ticking = false;
+    });
+  }, { passive: true });
+
+  let touchStartY = 0;
+  window.addEventListener('touchstart', (e) => {
+    if (isConfirmed()) return;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  window.addEventListener('touchmove', (e) => {
+    if (isConfirmed()) return;
+    const currentY = e.touches[0].clientY;
+    const deltaY = touchStartY - currentY;
+    if (deltaY > 0) {
+      const maxScrollY = getMaxScrollY();
+      if (window.scrollY >= maxScrollY - 2) {
+        e.preventDefault();
+      }
+    }
+  }, { passive: false });
+
+  window.addEventListener('wheel', (e) => {
+    if (isConfirmed()) return;
+    if (e.deltaY > 0) {
+      const maxScrollY = getMaxScrollY();
+      if (window.scrollY >= maxScrollY - 2) {
+        e.preventDefault();
+      }
+    }
+  }, { passive: false });
+
+  window.addEventListener('keydown', (e) => {
+    if (isConfirmed()) return;
+    const downKeys = ['ArrowDown', 'PageDown', 'End', ' '];
+    if (downKeys.includes(e.key)) {
+      const maxScrollY = getMaxScrollY();
+      if (window.scrollY >= maxScrollY - 2) {
+        e.preventDefault();
+      }
+    }
+  }, { passive: false });
+
+  const observer = new MutationObserver(() => {
+    if (holdBtn.classList.contains('ok')) observer.disconnect();
+  });
+  observer.observe(holdBtn, { attributes: true, attributeFilter: ['class'] });
+
+  const resetBtn = document.getElementById('confirmReset');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      setTimeout(enforceScrollBoundary, 50);
+    });
+  }
+
+  function recalibrate() {
+    if (!isConfirmed()) setTimeout(enforceScrollBoundary, 100);
+  }
+  window.addEventListener('pageshow', recalibrate);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') recalibrate();
+  });
+})();
+
+/* ============================================================
+   入口卡片（状态持久化 + 跳转返回不重置）
    ============================================================ */
 (function() {
   $$('.portal-card').forEach(card => {
@@ -1711,6 +1916,7 @@ function toast(msg, ms = 2000) {
       if (url) {
         toast('REDIRECTING → ' + url.replace(/^https?:\/\//, '').slice(0, 24) + '...');
         buzz(12);
+        writeState(STATE_KEYS.more, 1);
         setTimeout(() => { window.location.href = url; }, 500);
       }
     });
@@ -1718,15 +1924,19 @@ function toast(msg, ms = 2000) {
 })();
 
 /* ============================================================
-   音频模块 —— 进入页面立即尝试播放，失败则单击/滑动解锁
+   音频模块
    ============================================================ */
 (function() {
   const MAX = 3;
   const EXT = '.mp3';
   const KEY = 'terminal-audio-v1';
+  const cdnPrefix = 'https://cdn.jsdelivr.net/gh/qingfengqaq/yinmian-own-b@main/';
+
   let audio = null;
-  let unlockAttached = false;
-  let hasAttemptedAutoplay = false;
+  let srcIndex = Math.floor(Math.random() * MAX);
+  let unlockBound = false;
+  let done = false;
+  let mutedAutoplayTried = false;
 
   function getAudio() {
     if (!audio) {
@@ -1755,108 +1965,147 @@ function toast(msg, ms = 2000) {
     b.textContent = playing ? '♫' : '♪';
   }
 
-  // 播放核心：自动播放尝试，失败则安排解锁
-  function play() {
+  function loadSource() {
     const a = getAudio();
-    if (!a.src) return;
+    a.src = cdnPrefix + (srcIndex + 1) + EXT;
+    a.load();
+  }
+
+  function tryPlayUnmuted(retryLeft = MAX - 1) {
+    const a = getAudio();
+    if (!a.src) return Promise.reject(new Error('no src'));
+    if (!a.paused && !a.muted) { onSuccess(); return Promise.resolve(); }
+
+    a.muted = false;
     const p = a.play();
-    if (p && p.then) {
-      p.then(() => {
-        updateBtn(true);
-        setEnabled(true);
-        // 播放成功，移除解锁监听
-        removeUnlockListeners();
-      }).catch((e) => {
-        // 自动播放被拦截，保留静音状态，并绑定解锁
-        updateBtn(false);
-        if (enabled()) attachUnlock();
-      });
-    } else {
-      // 老旧浏览器
-      updateBtn(true);
-      setEnabled(true);
-      removeUnlockListeners();
-    }
+    const handle = (p && p.then) ? p : Promise.resolve();
+
+    return handle.then(onSuccess).catch(err => {
+      if (retryLeft > 0) {
+        srcIndex = (srcIndex + 1) % MAX;
+        loadSource();
+        return waitCanPlay(a, 3000)
+          .then(() => tryPlayUnmuted(retryLeft - 1))
+          .catch(() => tryPlayUnmuted(retryLeft - 1));
+      }
+      updateBtn(false);
+      throw err;
+    });
   }
 
-  function pause() {
+  function tryMutedAutoplay() {
+    if (mutedAutoplayTried) return Promise.reject();
+    mutedAutoplayTried = true;
     const a = getAudio();
-    if (a) a.pause();
-    updateBtn(false);
+    if (!a.src) return Promise.reject(new Error('no src'));
+
+    a.muted = true;
+    const p = a.play();
+    const handle = (p && p.then) ? p : Promise.resolve();
+
+    return handle.then(() => {
+      a.muted = false;
+      onSuccess();
+    }).catch(err => {
+      a.muted = false;
+      throw err;
+    });
   }
 
-  // 解锁监听：单击或滑动（touchmove）立即开启音乐
-  function unlockHandler(e) {
-    if (!enabled()) return;
-    const a = getAudio();
-    if (a.paused) {
-      play();          // 再次尝试，此时用户手势已满足
-    }
-    // 解绑所有监听，避免重复
-    removeUnlockListeners();
+  function waitCanPlay(a, ms) {
+    return new Promise((resolve, reject) => {
+      if (a.readyState >= 3) return resolve();
+      const t = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, ms);
+      function onReady() { cleanup(); resolve(); }
+      function onErr() { cleanup(); reject(new Error('load error')); }
+      function cleanup() {
+        clearTimeout(t);
+        a.removeEventListener('canplay', onReady);
+        a.removeEventListener('error', onErr);
+      }
+      a.addEventListener('canplay', onReady, { once: true });
+      a.addEventListener('error', onErr, { once: true });
+    });
   }
 
-  function attachUnlock() {
-    if (unlockAttached) return;
-    unlockAttached = true;
-    document.addEventListener('click', unlockHandler, { once: true });
-    document.addEventListener('touchstart', unlockHandler, { once: true });
-    document.addEventListener('touchmove', unlockHandler, { once: true, passive: true });
-    document.addEventListener('scroll', unlockHandler, { once: true, passive: true });
-    // 额外用pointerdown覆盖部分手势
-    document.addEventListener('pointerdown', unlockHandler, { once: true });
+  function onSuccess() {
+    done = true;
+    updateBtn(true);
+    setEnabled(true);
+    unbindUnlock();
   }
 
-  function removeUnlockListeners() {
-    document.removeEventListener('click', unlockHandler);
-    document.removeEventListener('touchstart', unlockHandler);
-    document.removeEventListener('touchmove', unlockHandler);
-    document.removeEventListener('scroll', unlockHandler);
-    document.removeEventListener('pointerdown', unlockHandler);
-    unlockAttached = false;
+  function unlockHandler() {
+    if (done) { unbindUnlock(); return; }
+    if (!enabled()) { unbindUnlock(); return; }
+    tryPlayUnmuted().catch(() => {});
+  }
+
+  function bindUnlock() {
+    if (unlockBound || done) return;
+    unlockBound = true;
+    const opts = { passive: true, capture: true };
+    document.addEventListener('pointerdown', unlockHandler, opts);
+    document.addEventListener('touchstart', unlockHandler, opts);
+    document.addEventListener('mousedown', unlockHandler, opts);
+    document.addEventListener('click', unlockHandler, opts);
+    document.addEventListener('keydown', unlockHandler, opts);
+    document.addEventListener('scroll', unlockHandler, opts);
+    document.addEventListener('wheel', unlockHandler, opts);
+  }
+  function unbindUnlock() {
+    if (!unlockBound) return;
+    unlockBound = false;
+    document.removeEventListener('pointerdown', unlockHandler, true);
+    document.removeEventListener('touchstart', unlockHandler, true);
+    document.removeEventListener('mousedown', unlockHandler, true);
+    document.removeEventListener('click', unlockHandler, true);
+    document.removeEventListener('keydown', unlockHandler, true);
+    document.removeEventListener('scroll', unlockHandler, true);
+    document.removeEventListener('wheel', unlockHandler, true);
   }
 
   function init() {
     const a = getAudio();
     a.loop = true;
     a.volume = 0.3;
-    const list = [];
-    const cdnPrefix = 'https://cdn.jsdelivr.net/gh/qingfengqaq/yinmian-own-b@main/';
-    for (let i = 1; i <= MAX; i++) list.push(cdnPrefix + String(i) + EXT);
-    const src = list[Math.floor(Math.random() * list.length)];
-    a.src = src;
-    a.load();
+    loadSource();
+    updateBtn(false);
 
-    // 设置音频开关按钮的图标状态（初始根据enabled，但实际播放状态由play结果决定）
-    updateBtn(false);   // 先显示静音图标，播放成功后会变成♫
-
-    // 如果用户之前手动关闭过音乐，则不自动播放
     if (enabled()) {
-      // 立刻尝试播放
-      hasAttemptedAutoplay = true;
-      play();  // play内部会处理失败并自动attachUnlock
-    } else {
-      // 手动关闭状态：不自动播放，但按钮显示静音，点击可开启
-      updateBtn(false);
+      tryMutedAutoplay().catch(() => {
+        tryPlayUnmuted().catch(() => {
+          bindUnlock();
+        });
+      });
     }
 
-    // 按钮点击切换
     const btn = document.querySelector('.audio-toggle');
     if (btn) {
-      btn.onclick = (e) => {
-        e.stopPropagation(); // 避免触发全局解锁（但已用once，无碍）
-        if (a.paused) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const au = getAudio();
+        if (au.paused) {
           setEnabled(true);
-          play();
+          tryPlayUnmuted().catch(() => {
+            setTimeout(() => tryPlayUnmuted().catch(() => {}), 300);
+          });
         } else {
-          pause();
+          au.pause();
+          updateBtn(false);
           setEnabled(false);
         }
-      };
+      });
     }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && enabled()) {
+        const au = getAudio();
+        if (au.paused) tryPlayUnmuted().catch(() => {});
+      }
+    });
   }
 
-  // 确保在DOM准备好后初始化，稍延迟加载音频资源
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => setTimeout(init, 100));
   } else {
