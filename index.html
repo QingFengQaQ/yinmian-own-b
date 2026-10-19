@@ -1924,16 +1924,14 @@ function toast(msg, ms = 2000) {
 })();
 
 /* ============================================================
-   音频模块
+   音频模块（参照文件 1 的逻辑）
+   ★ 先静音自动播放 → 失败再非静音 → 仍失败挂多事件解锁
    ============================================================ */
 (function() {
-  const MAX = 3;
-  const EXT = '.mp3';
-  const KEY = 'terminal-audio-v1';
-  const cdnPrefix = 'https://cdn.jsdelivr.net/gh/qingfengqaq/yinmian-own-b@main/';
+  const AUDIO_KEY = 'terminal-audio-v1';
+  const AUDIO_SRC = 'https://cdn.jsdelivr.net/gh/qingfengqaq/yinmian-own-b@main/1.mp3';
 
   let audio = null;
-  let srcIndex = Math.floor(Math.random() * MAX);
   let unlockBound = false;
   let done = false;
   let mutedAutoplayTried = false;
@@ -1944,72 +1942,34 @@ function toast(msg, ms = 2000) {
       audio.preload = 'auto';
       audio.loop = true;
       audio.volume = 0.3;
+      audio.src = AUDIO_SRC;
+      audio.addEventListener('error', () => {
+        console.warn('[audio] 加载失败:', audio.src);
+      });
+      audio.addEventListener('canplay', () => {
+        console.log('[audio] 可播放');
+      });
     }
     return audio;
   }
+
   function enabled() {
     try {
-      const v = sessionStorage.getItem(KEY);
-      if (!v) return true;
-      return JSON.parse(v).enabled !== false;
+      const raw = localStorage.getItem(AUDIO_KEY);
+      if (!raw) return true;
+      return JSON.parse(raw).enabled !== false;
     } catch (e) { return true; }
   }
   function setEnabled(v) {
-    try { sessionStorage.setItem(KEY, JSON.stringify({ enabled: v })); } catch (e) {}
+    try { localStorage.setItem(AUDIO_KEY, JSON.stringify({ enabled: v })); } catch (e) {}
   }
+
   function updateBtn(playing) {
     const b = document.querySelector('.audio-toggle');
     if (!b) return;
     b.classList.toggle('playing', playing);
     b.classList.toggle('muted', !playing);
     b.textContent = playing ? '♫' : '♪';
-  }
-
-  function loadSource() {
-    const a = getAudio();
-    a.src = cdnPrefix + (srcIndex + 1) + EXT;
-    a.load();
-  }
-
-  function tryPlayUnmuted(retryLeft = MAX - 1) {
-    const a = getAudio();
-    if (!a.src) return Promise.reject(new Error('no src'));
-    if (!a.paused && !a.muted) { onSuccess(); return Promise.resolve(); }
-
-    a.muted = false;
-    const p = a.play();
-    const handle = (p && p.then) ? p : Promise.resolve();
-
-    return handle.then(onSuccess).catch(err => {
-      if (retryLeft > 0) {
-        srcIndex = (srcIndex + 1) % MAX;
-        loadSource();
-        return waitCanPlay(a, 3000)
-          .then(() => tryPlayUnmuted(retryLeft - 1))
-          .catch(() => tryPlayUnmuted(retryLeft - 1));
-      }
-      updateBtn(false);
-      throw err;
-    });
-  }
-
-  function tryMutedAutoplay() {
-    if (mutedAutoplayTried) return Promise.reject();
-    mutedAutoplayTried = true;
-    const a = getAudio();
-    if (!a.src) return Promise.reject(new Error('no src'));
-
-    a.muted = true;
-    const p = a.play();
-    const handle = (p && p.then) ? p : Promise.resolve();
-
-    return handle.then(() => {
-      a.muted = false;
-      onSuccess();
-    }).catch(err => {
-      a.muted = false;
-      throw err;
-    });
   }
 
   function waitCanPlay(a, ms) {
@@ -2030,14 +1990,55 @@ function toast(msg, ms = 2000) {
 
   function onSuccess() {
     done = true;
+    console.log('[audio] 播放成功');
     updateBtn(true);
     setEnabled(true);
     unbindUnlock();
   }
 
+  function tryPlayUnmuted() {
+    const a = getAudio();
+    if (!a.src) return Promise.reject(new Error('no src'));
+    if (!a.paused && !a.muted) { onSuccess(); return Promise.resolve(); }
+
+    a.muted = false;
+    const p = a.play();
+    const handle = (p && p.then) ? p : Promise.resolve();
+    return handle.then(onSuccess).catch(err => {
+      console.warn('[audio] 非静音播放被拦截:', err.name);
+      updateBtn(false);
+      throw err;
+    });
+  }
+
+  function tryMutedAutoplay() {
+    if (mutedAutoplayTried) return Promise.reject(new Error('already tried'));
+    mutedAutoplayTried = true;
+    const a = getAudio();
+    if (!a.src) return Promise.reject(new Error('no src'));
+
+    a.muted = true;
+    const p = a.play();
+    const handle = (p && p.then) ? p : Promise.resolve();
+    return handle.then(() => {
+      a.muted = false;  // 静音解锁后立即恢复音量
+      onSuccess();
+    }).catch(err => {
+      a.muted = false;
+      throw err;
+    });
+  }
+
+  function pause() {
+    const a = getAudio();
+    if (a) a.pause();
+    updateBtn(false);
+  }
+
   function unlockHandler() {
     if (done) { unbindUnlock(); return; }
     if (!enabled()) { unbindUnlock(); return; }
+    console.log('[audio] 用户交互，尝试播放');
     tryPlayUnmuted().catch(() => {});
   }
 
@@ -2066,44 +2067,51 @@ function toast(msg, ms = 2000) {
   }
 
   function init() {
-    const a = getAudio();
-    a.loop = true;
-    a.volume = 0.3;
-    loadSource();
+    getAudio();
     updateBtn(false);
 
     if (enabled()) {
+      // 1) 先试静音自动播放（多数浏览器允许）
       tryMutedAutoplay().catch(() => {
+        // 2) 静音也不行 → 试非静音
         tryPlayUnmuted().catch(() => {
+          // 3) 都不行 → 挂多事件解锁
           bindUnlock();
         });
       });
     }
 
+    // 页面重新可见 / 返回时再试
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && enabled() && !done) {
+        const a = getAudio();
+        if (a.paused) tryPlayUnmuted().catch(() => {});
+      }
+    });
+    window.addEventListener('pageshow', () => {
+      if (enabled() && !done) {
+        const a = getAudio();
+        if (a.paused) tryPlayUnmuted().catch(() => {});
+      }
+    });
+
+    // 按钮
     const btn = document.querySelector('.audio-toggle');
     if (btn) {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const au = getAudio();
-        if (au.paused) {
+        const a = getAudio();
+        if (a.paused) {
           setEnabled(true);
           tryPlayUnmuted().catch(() => {
             setTimeout(() => tryPlayUnmuted().catch(() => {}), 300);
           });
         } else {
-          au.pause();
-          updateBtn(false);
+          pause();
           setEnabled(false);
         }
       });
     }
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && enabled()) {
-        const au = getAudio();
-        if (au.paused) tryPlayUnmuted().catch(() => {});
-      }
-    });
   }
 
   if (document.readyState === 'loading') {
